@@ -1,19 +1,17 @@
 import express from "express";
+import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
+import { fileURLToPath } from "url";
 import "dotenv/config";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(express.text());
+app.use(express.static(path.resolve(__dirname, "client/dist")));
+
 const port = process.env.PORT || 3000;
 const apiKey = process.env.OPENAI_API_KEY;
-
-// Configure Vite middleware for React client
-const vite = await createViteServer({
-  server: { middlewareMode: true },
-  appType: "custom",
-});
-app.use(vite.middlewares);
 
 const sessionConfig = JSON.stringify({
   session: {
@@ -27,29 +25,7 @@ const sessionConfig = JSON.stringify({
   },
 });
 
-// All-in-one SDP request (experimental)
-app.post("/session", async (req, res) => {
-  const fd = new FormData();
-  console.log(req.body);
-  fd.set("sdp", req.body);
-  fd.set("session", sessionConfig);
-
-  const r = await fetch("https://api.openai.com/v1/realtime/calls", {
-    method: "POST",
-    headers: {
-      "OpenAI-Beta": "realtime=v1",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: fd,
-  });
-  const sdp = await r.text();
-  console.log(sdp);
-
-  // Send back the SDP we received from the OpenAI REST API
-  res.send(sdp);
-});
-
-// API route for ephemeral token generation
+// Token route
 app.get("/token", async (req, res) => {
   try {
     const response = await fetch(
@@ -61,36 +37,40 @@ app.get("/token", async (req, res) => {
           "Content-Type": "application/json",
         },
         body: sessionConfig,
-      },
+      }
     );
-
     const data = await response.json();
     res.json(data);
   } catch (error) {
-    console.error("Token generation error:", error);
+    console.error("Token error:", error);
     res.status(500).json({ error: "Failed to generate token" });
   }
 });
 
-// Render the React client
-app.use("*", async (req, res, next) => {
-  const url = req.originalUrl;
+// SDP session
+app.post("/session", async (req, res) => {
+  const fd = new FormData();
+  fd.set("sdp", req.body);
+  fd.set("session", sessionConfig);
 
-  try {
-    const template = await vite.transformIndexHtml(
-      url,
-      fs.readFileSync("./client/index.html", "utf-8"),
-    );
-    const { render } = await vite.ssrLoadModule("./client/entry-server.jsx");
-    const appHtml = await render(url);
-    const html = template.replace(`<!--ssr-outlet-->`, appHtml?.html);
-    res.status(200).set({ "Content-Type": "text/html" }).end(html);
-  } catch (e) {
-    vite.ssrFixStacktrace(e);
-    next(e);
-  }
+  const r = await fetch("https://api.openai.com/v1/realtime/calls", {
+    method: "POST",
+    headers: {
+      "OpenAI-Beta": "realtime=v1",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: fd,
+  });
+
+  const sdp = await r.text();
+  res.send(sdp);
+});
+
+// Fallback to React index.html
+app.get("*", (req, res) => {
+  res.sendFile(path.resolve(__dirname, "client/dist/index.html"));
 });
 
 app.listen(port, () => {
-  console.log(`Express server running on *:${port}`);
+  console.log(`Server is running at http://localhost:${port}`);
 });
