@@ -2,9 +2,9 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon server.js --dev",
-    "build": "cd client && npm install && npm run build",
+    "build": "cd client && npm install && npm run build-client",
+    "build-client": "vite build",
     "start": "node server.js",
-    "build:client": "vite build --outDir dist/client --ssrManifest",
     "build:server": "vite build --outDir dist/server --ssr /index.js",
     "devinstall": "zx ../../devinstall.mjs -- node server.js --dev",
     "lint": "eslint . --ext .js,.jsx --fix"
